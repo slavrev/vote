@@ -1,0 +1,69 @@
+
+create table voters (
+  id varchar(20) primary key,
+  passportimagehash varchar(100) not null,
+  fullname varchar(100) not null,
+  salt bigint not null,
+  email varchar(100) not null,
+  locality varchar(100) not null,
+  district varchar(100) not null
+);
+
+create table checkers (
+  id varchar(20) primary key,
+  passportimagehash varchar(100) not null,
+  fullname varchar(100) not null,
+  salt bigint not null,
+  email varchar(100) not null,
+  locality varchar(100) not null,
+  district varchar(100) not null
+);
+
+create table localities (
+  name varchar(100) not null primary key
+);
+
+create table districts (
+  locality varchar(100) references localities(name),
+  name varchar(100)
+);
+
+insert into campaigns( id, name, description, created, todate, type, state, data )
+values( 'c1', 'Тестовое голосование', 'Это тестовое голосование', current_timestamp, current_timestamp + interval '2 months', 'select_one', 'active',
+'{{Лукашенко,lknk,""},{Тихановская,thnk,""}}');
+
+# state: active, not_active, finished
+# type: select_one, sheck_several
+# data: display, code, value
+
+create table campaigns (
+  id varchar(20) primary key,
+  name varchar(200) not null,
+  description varchar(1000) not null,
+  created timestamp not null,
+  todate timestamp not null,
+  type varchar(20) not null,
+  state varchar(20) not null,
+  data text[][3] not null
+);
+
+
+
+create table votes (
+  voterid varchar(20) references voters(id),
+  campaignid varchar(20) references campaigns(id),
+  number bigint not null,
+  sent timestamp not null,
+  data text[][3] not null,
+  checked boolean not null,
+  checkerid varchar(20) references checkers(id),
+  othercheckers text[]
+);
+
+create table inconsistencyreports (
+  voterid varchar(20) references voters(id),
+  campaignid varchar(20) references campaigns(id),
+  senderid varchar(20) references voters(id),
+  type varchar(50) not null,
+  state varchar(20) not null
+);
