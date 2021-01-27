@@ -1,0 +1,1151 @@
+CREATE OR REPLACE FUNCTION generateentityid(n integer)
+ RETURNS character varying
+ LANGUAGE plpgsql
+AS $function$
+declare
+  chars bytea := 'abcdefghijklmnopqrstuvwxyz1234567890';
+  nchars integer := length( chars );
+  binstr bytea;
+  id varchar;
+  i integer := 0;
+  ichar integer := 0;
+begin
+
+  binstr = gen_random_bytes( n );
+
+  for i in 0..n-1 loop
+    ichar := get_byte( binstr, i ) % nchars;
+    binstr := set_byte( binstr, i, get_byte(chars, ichar) );
+  end loop;
+
+  id := convert_from( binstr, 'UTF8' );
+
+  return id;
+end;
+$function$
+
+CREATE OR REPLACE FUNCTION public.createcampaign(name character varying, description character varying, created timestamp without time zone, todate timestamp without time zone, type character varying, state character varying, data text[])
+ RETURNS character varying
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+ id varchar;
+ ntries integer;
+ isinserted boolean;
+ maxtries integer := 5;
+ creatorid varchar;
+begin
+
+ isinserted := false;
+ ntries := 0;
+
+ loop
+
+  begin
+   id := generateEntityId( 2 );
+
+   insert into campaignes( id, name, description, created, todate, type, state, data ) values( id, name, description, created, todate, type, state, data );
+
+   isinserted := true;
+
+   exception when check_violation then
+     ntries := ntries+1;
+
+  end;
+
+   exit when isinserted or ntries = maxtries;
+
+ end loop;
+
+ if( isinserted<>true ) then
+  if( ntries = maxtries ) then
+   raise exception 'Campaign id generation failure';
+  else
+   raise exception 'Not id problem';
+  end if;
+ end if;
+
+ return id;
+
+end;
+$function$
+
+CREATE OR REPLACE FUNCTION public.createdistrict(name character varying, localityid character varying)
+ RETURNS character varying
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+ id varchar;
+ ntries integer;
+ isinserted boolean;
+ maxtries integer := 5;
+ creatorid varchar;
+begin
+
+ isinserted := false;
+ ntries := 0;
+
+ loop
+
+  begin
+   id := generateEntityId( 4 );
+
+   insert into districts( id, localityid, name ) values( id, localityid, name );
+
+   isinserted := true;
+
+   exception when check_violation then
+     ntries := ntries+1;
+
+  end;
+
+   exit when isinserted or ntries = maxtries;
+
+ end loop;
+
+ if( isinserted<>true ) then
+  if( ntries = maxtries ) then
+   raise exception 'District id generation failure';
+  else
+   raise exception 'Not id problem';
+  end if;
+ end if;
+
+ return id;
+
+end;
+$function$
+
+CREATE OR REPLACE FUNCTION public.createlocality(name character varying)
+ RETURNS character varying
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+ id varchar;
+ ntries integer;
+ isinserted boolean;
+ maxtries integer := 5;
+ creatorid varchar;
+begin
+
+ isinserted := false;
+ ntries := 0;
+
+ loop
+
+  begin
+   id := generateEntityId( 4 );
+
+   insert into localities( id, name ) values( id, name );
+
+   isinserted := true;
+
+   exception when check_violation then
+     ntries := ntries+1;
+
+  end;
+
+   exit when isinserted or ntries = maxtries;
+
+ end loop;
+
+ if( isinserted<>true ) then
+  if( ntries = maxtries ) then
+   raise exception 'Locality id generation failure';
+  else
+   raise exception 'Not id problem';
+  end if;
+ end if;
+
+ return id;
+
+end;
+$function$
+
+create or replace function addOrEditVote(
+   voterid varchar,
+   campaignid varchar,
+   votedata varchar
+  )
+ returns void
+ as $$
+ #variable_conflict use_variable
+ declare
+
+  campaign record;
+  data text[][3];
+   i integer;
+   count bigint;
+   datafound boolean := false;
+  state varchar := null;
+ 
+ begin
+ 
+   if not exists ( select 1 from voters as v where v.id = voterid limit 1 ) then
+     raise exception 'Voter does not exist';  
+   end if;
+
+ 
+   if not exists ( select 1 from campaigns as c where c.id = campaignid limit 1 ) then
+     raise exception 'Campaign does not exist';  
+   end if;
+ 
+
+  select * into campaign from campaigns as c where c.id = campaignid;
+
+
+  if( campaign.type = 'select_one' ) then
+ 
+     for i in 1 .. array_upper( campaign.data, 1 )
+     loop
+ 
+       begin
+
+         campaign.data[i][3]:= '-';
+
+         -- raise notice 'data: % % %', campaign.data[i][1], campaign.data[i][2], campaign.data[i][3];
+ 
+         if( campaign.data[i][2] = votedata ) then
+           campaign.data[i][3] := '+';
+           datafound := true;
+         end if;
+ 
+       end;
+ 
+     end loop;
+ 
+  end if;
+ 
+  if( datafound = false ) then
+     raise exception 'Wrong vote data. %', votedata;
+  end if;
+
+  select v.state into state from votes as v where v.voterid = voterid and v.campaignid = campaignid limit 1; 
+
+  if( state is null ) then
+
+    select vd.count into count from votesdata as vd limit 1;
+
+    -- raise notice 'count: %', count;
+   
+     begin
+   
+       insert into votes( voterid, campaignid, number, sent, data, state, checkerid, othercheckers )
+                  values( voterid, campaignid, count+1, now() AT TIME ZONE 'UTC', votedata, 'n', null, '{}' );
+   
+       update votesdata set count = count+1;
+   
+     exception when check_violation then
+   
+      insert into votesconflicts( voterid, campaignid, sent, data, type )
+                           values( voterid, campaignid, now() AT TIME ZONE 'UTC', votedata, 'id' );
+     end;
+
+  elsif( state = '-' ) then /* declined */ /* защита обновлять можно, только если голос был отклонён */
+
+    update votes as v set sent = now() AT TIME ZONE 'UTC', data = votedata, state = 'n', othercheckers = '{}', checkerid = null where v.voterid = voterid and v.campaignid = campaignid;
+
+  end if;
+ 
+ end;
+ $$ language plpgsql;
+
+
+create or replace function getVote(
+  voterid varchar,
+  campaignid varchar,
+  out number bigint,
+  out sent timestamp,
+  out data varchar,
+  out state varchar,
+  out checkerid varchar,
+  out othercheckers varchar,
+  out message varchar,
+  out fullname varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  select
+    v.number,
+    v.sent,
+    v.data,
+    v.state,
+    v.checkerid,
+    v.othercheckers,
+    v.message,
+    vt.fullname
+  into
+    number,
+    sent,
+    data,
+    state,
+    checkerid,
+    othercheckers,
+    message,
+    fullname    
+  from votes as v
+  inner join voters as vt on vt.id = v.voterid
+  where v.voterid = voterid and v.campaignid = campaignid
+  limit 1; 
+
+end;
+$function$;
+
+
+create or replace function addVoteConflict(
+  voterid varchar,
+  passportimagehash varchar,
+  out id varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+ ntries integer;
+ isinserted boolean;
+ maxtries integer := 5;
+ creatorid varchar;
+begin
+
+ isinserted := false;
+ ntries := 0;
+
+ loop
+
+  begin
+   id := generateEntityId( 8 );
+
+   insert into votesconflicts( id, voterid, passportimagehash ) values( id, voterid, passportimagehash );
+
+   isinserted := true;
+
+   exception when check_violation then
+     ntries := ntries+1;
+
+  end;
+
+   exit when isinserted or ntries = maxtries;
+
+ end loop;
+
+ if( isinserted<>true ) then
+  if( ntries = maxtries ) then
+   raise exception 'Vote conflict id generation failure';
+  else
+   raise exception 'Not id problem';
+  end if;
+ end if;
+
+end;
+$function$;
+
+create or replace function addCheckerConflict(
+  checkerid varchar,
+  passportimagehash varchar,
+  fullname varchar,
+  email varchar,
+  localityid varchar,
+  districtid varchar,
+  sendemails boolean,
+  out id varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+ ntries integer;
+ isinserted boolean;
+ maxtries integer := 5;
+ creatorid varchar;
+begin
+
+ isinserted := false;
+ ntries := 0;
+
+ loop
+
+  begin
+   id := generateEntityId( 8 );
+
+   insert into checkersconflicts( id, checkerid, passportimagehash, fullname, email, localityid, districtid, sendemails ) 
+   values( id, checkerid, passportimagehash, fullname, email, localityid, districtid, sendemails );
+
+   isinserted := true;
+
+   exception when check_violation then
+     ntries := ntries+1;
+
+  end;
+
+  exit when isinserted or ntries = maxtries;
+
+ end loop;
+
+ if( isinserted<>true ) then
+  if( ntries = maxtries ) then
+   raise exception 'Checker conflict id generation failure';
+  else
+   raise exception 'Not id problem';
+  end if;
+ end if;
+
+end;
+$function$;
+
+
+create or replace function addVoterDataToVoteConflict(
+  id varchar,
+  voterid varchar,
+  passportimagehash varchar,
+  fullname varchar,
+  email varchar,
+  localityid varchar,
+  districtid varchar,
+  sendemails boolean
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  update votesconflicts as vc set fullname = fullname, email = email, localityid = localityid, districtid = districtid, sendemails = sendemails
+  where vc.id = id and vc.voterid = voterid and vc.passportimagehash = passportimagehash;
+
+end;
+$function$;
+
+
+create or replace function addVoteToVoteConflict(
+  id varchar,
+  voterid varchar,
+  passportimagehash varchar,
+  campaignid varchar,
+  data varchar
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  update votesconflicts as vc set campaignid = campaignid, data = data, sent = now() AT TIME ZONE 'UTC'
+  where vc.id = id and vc.voterid = voterid and vc.passportimagehash = passportimagehash;
+
+end;
+$function$;
+
+
+create or replace function loadVotes(
+  campaignid varchar,
+  numberfrom bigint
+)
+ returns table(
+  number bigint,
+  voterid varchar,
+  data varchar,
+  sent timestamp,
+  checkerid varchar,
+  othercheckers varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  return query
+    select
+      v.number,
+      v.voterid,
+      v.data,
+      v.sent,
+      v.checkerid,
+      v.othercheckers::varchar
+    from votes as v
+    where v.campaignid = campaignid and v.state = '+' and v.number > numberfrom
+    order by number asc
+    limit 10000; /* 640 kb per query */
+
+end;
+$function$;
+
+create or replace function getNextVoiceForCheckerCheck(
+  campaignid varchar,
+  checkerid varchar,
+  out voterid varchar,
+  out fullname varchar,
+  out number bigint,
+  out data varchar,
+  out othercheckers varchar,
+  out locality varchar,
+  out district varchar,
+  out districtuncheckedleft bigint,
+  out message varchar,
+  out helperid varchar,
+  out conflictid varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+/* conflicts first */
+  select
+    vc.voterid,
+    vc.fullname,
+    0,
+    vc.data,
+    null,
+    l.name,
+    d.name,
+    null,
+    null,
+    vc.id
+  into
+    voterid,
+    fullname,
+    number,
+    data,
+    othercheckers,
+    locality,
+    district,
+    message,
+    helperid,
+    conflictid
+  from votesconflicts as vc
+  inner join checkers as c on c.id = checkerid and vc.localityid = c.localityid and vc.districtid = c.districtid
+  inner join localities as l on vc.localityid = l.id
+  inner join districts as d on vc.districtid = d.id
+  where vc.campaignid = campaignid and ( vc.checkrequested is null or vc.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' )
+  limit 1;
+
+  if( voterid is not null ) then 
+  end if;
+
+  if( voterid is null ) then
+
+  /* inconsistencyreports second */
+    select
+      v.voterid,
+      vt.fullname,
+      v.number,
+      v.data,
+      v.othercheckers,
+      l.name,
+      d.name,
+      ir.message,
+      ir.senderid,
+      null
+    into
+      voterid,
+      fullname,
+      number,
+      data,
+      othercheckers,
+      locality,
+      district,
+      message,
+      helperid,
+      conflictid
+    from inconsistencyreports as ir
+    inner join votes as v on v.voterid = ir.voterid and v.campaignid = ir.campaignid 
+    inner join voters as vt on vt.id = v.voterid 
+    inner join checkers as c on c.id = checkerid and vt.localityid = c.localityid and vt.districtid = c.districtid
+    inner join localities as l on vt.localityid = l.id
+    inner join districts as d on vt.districtid = d.id
+    where ir.campaignid = campaignid and ( ir.checkrequested is null or ir.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' )
+    limit 1;
+
+  end if;
+
+
+  if( voterid is null ) then
+
+    select
+      v.voterid,
+      vt.fullname,
+      v.number,
+      v.data,
+      v.othercheckers,
+      l.name,
+      d.name,
+      null,
+      null,
+      null
+    into
+      voterid,
+      fullname,
+      number,
+      data,
+      othercheckers,
+      locality,
+      district,
+      message,
+      helperid,
+      conflictid
+    from votes as v 
+    inner join voters as vt on vt.id = v.voterid 
+    inner join checkers as c on c.id = checkerid and vt.localityid = c.localityid and vt.districtid = c.districtid
+    inner join localities as l on vt.localityid = l.id
+    inner join districts as d on vt.districtid = d.id
+    where v.campaignid = campaignid and v.state = 'n' and ( v.checkrequested is null or v.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' ) 
+    and not exists 
+      ( select * from inconsistencyreports as ir where v.voterid = ir.voterid and v.campaignid = ir.campaignid  )
+    limit 1;
+
+  end if;
+
+
+  if( voterid is not null ) then
+
+    select
+      count(*)
+    into
+      districtuncheckedleft
+    from votes as v 
+    inner join voters as vt on vt.id = v.voterid 
+    inner join checkers as c on c.id = checkerid and vt.localityid = c.localityid and vt.districtid = c.districtid
+    inner join localities as l on vt.localityid = l.id
+    inner join districts as d on vt.districtid = d.id
+    where v.campaignid = campaignid and v.state = 'n';  
+
+  end if;
+
+
+  /* пробуем взять из нас.пункта 'Другое' */
+  if( voterid is null ) then
+
+  /* conflicts first */
+    select
+      vc.voterid,
+      vc.fullname,
+      0,
+      vc.data,
+      null,
+      l.name,
+      d.name,
+      null,
+      null,
+      vc.id
+    into
+      voterid,
+      fullname,
+      number,
+      data,
+      othercheckers,
+      locality,
+      district,
+      message,
+      helperid,
+      conflictid
+    from votesconflicts as vc
+    inner join checkers as c on c.id = checkerid and ( vc.localityid = 'xxxx' or vc.districtid = 'xxxx' )
+    inner join localities as l on vc.localityid = l.id
+    inner join districts as d on vc.districtid = d.id
+    where vc.campaignid = campaignid and ( vc.checkrequested is null or vc.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' )
+    limit 1;
+
+    if( voterid is null ) then
+      select
+        v.voterid,
+        vt.fullname,
+        v.number,
+        v.data,
+        v.othercheckers,
+        l.name,
+        d.name,
+        ir.message,
+        ir.senderid,
+        null
+      into
+        voterid,
+        fullname,
+        number,
+        data,
+        othercheckers,
+        locality,
+        district,
+        message,
+        helperid,
+        conflictid
+      from inconsistencyreports as ir
+      inner join votes as v on v.voterid = ir.voterid and v.campaignid = ir.campaignid 
+      inner join voters as vt on vt.id = v.voterid 
+      inner join checkers as c on c.id = checkerid and ( vt.localityid = 'xxxx' or vt.districtid = 'xxxx' )
+      inner join localities as l on vt.localityid = l.id
+      inner join districts as d on vt.districtid = d.id
+      where ir.campaignid = campaignid and ( ir.checkrequested is null or ir.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' )
+      limit 1;
+
+    end if;
+
+    if( voterid is null ) then
+
+        select
+          v.voterid,
+          vt.fullname,
+          v.number,
+          v.data,
+          v.othercheckers,
+          l.name,
+          d.name,
+          null,
+          null,
+          null
+        into
+          voterid,
+          fullname,
+          number,
+          data,
+          othercheckers,
+          locality,
+          district,
+          message,
+          helperid,
+          conflictid
+        from votes as v 
+        inner join voters as vt on vt.id = v.voterid 
+        inner join checkers as c on c.id = checkerid and ( vt.localityid = 'xxxx' or vt.districtid = 'xxxx' )
+        inner join localities as l on vt.localityid = l.id
+        inner join districts as d on vt.districtid = d.id
+        where v.campaignid = campaignid and v.state = 'n' and ( v.checkrequested is null or v.checkrequested + interval '5 minutes' < now() AT TIME ZONE 'UTC' ) 
+        and not exists 
+          ( select * from inconsistencyreports as ir where v.voterid = ir.voterid and v.campaignid = ir.campaignid  )
+        limit 1;
+
+    end if;
+
+    if( voterid is not null ) then
+
+      select
+        count(*)
+      into
+        districtuncheckedleft
+      from votes as v 
+      inner join voters as vt on vt.id = v.voterid 
+      inner join checkers as c on c.id = checkerid and ( vt.localityid = 'xxxx' or vt.districtid = 'xxxx' )
+      inner join localities as l on vt.localityid = l.id
+      inner join districts as d on vt.districtid = d.id
+      where v.campaignid = campaignid and v.state = 'n';  
+
+    end if;
+
+  end if;
+
+  if( voterid is not null ) then
+
+      if( conflictid is not null ) then
+
+        update votesconflicts as vc set checkrequested = now() AT TIME ZONE 'UTC' where vc.voterid = voterid and vc.campaignid = campaignid;      
+
+      else
+
+        if( helperid is null ) then
+
+          update votes as v set checkrequested = now() AT TIME ZONE 'UTC' where v.voterid = voterid and v.campaignid = campaignid;
+
+        elsif( helperid is not null ) then
+
+          update inconsistencyreports as ir set checkrequested = now() AT TIME ZONE 'UTC' where ir.voterid = voterid and ir.campaignid = campaignid;
+    
+        end if;
+
+      end if;
+
+  end if;
+
+end;
+$function$;
+
+create or replace function getNextCheckerCheck(
+  out checkerid varchar,
+  out fullname varchar,
+  out email varchar,
+  out locality varchar,
+  out district varchar,
+  out conflictid varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  select 
+    c.checkerid,
+    c.fullname,
+    c.email,
+    l.name,
+    d.name,
+    c.id
+  into
+    checkerid,
+    fullname,
+    email,
+    locality,
+    district,
+    conflictid
+  from checkersconflicts as c 
+  inner join localities as l on l.id = c.localityid
+  inner join districts as d on d.id = c.districtid
+  limit 1;
+
+  if( checkerid is null ) then
+
+    select 
+      c.id,
+      c.fullname,
+      c.email,
+      l.name,
+      d.name,
+      null
+    into
+      checkerid,
+      fullname,
+      email,
+      locality,
+      district,
+      conflictid
+    from checkers as c 
+    inner join localities as l on l.id = c.localityid
+    inner join districts as d on d.id = c.districtid
+    where c.state = 'n'
+    limit 1;
+
+  end if;
+
+end;
+$function$;
+
+create or replace function getChecker(
+  id varchar,
+  out passportimagehash varchar,
+  out fullname varchar,
+  out email varchar,
+  out localityid varchar,
+  out districtid varchar,
+  out sendemails varchar,
+  out nchecked bigint,
+  out message varchar,
+  out state varchar,
+  out locality varchar,
+  out district varchar
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  select
+    c.passportimagehash,
+    c.fullname,
+    c.email,
+    c.localityid,
+    c.districtid,
+    c.sendemails,
+    c.nchecked,
+    c.message,
+    c.state,
+    l.name,
+    d.name
+  into
+    passportimagehash,
+    fullname,
+    email,
+    localityid,
+    districtid,
+    sendemails,
+    nchecked,
+    message,
+    state,
+    locality,
+    district
+  from checkers as c
+  inner join localities as l on l.id = c.localityid
+  inner join districts as d on d.id = c.districtid
+  where c.id = id
+  limit 1;
+
+end;
+$function$;
+
+create or replace function saveVoiceCheckChecker(
+  voterid varchar,
+  campaignid varchar,
+  checkerid varchar,
+  state varchar,
+  message varchar
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  if( state != '+' and state != '-' ) then
+    raise exception 'Wrong state';
+  end if;
+
+  update votes as v set state = state, checkerid = checkerid, checkrequested = null, message = message 
+  where v.voterid = voterid and v.campaignid = campaignid;
+
+  delete from inconsistencyreports as ir where ir.voterid = voterid and ir.campaignid = campaignid;
+
+  update checkers as c set nchecked = nchecked+1 where c.id = checkerid;
+
+end;
+$function$;
+
+create or replace function saveVoteConflictResolve(
+  conflictid varchar,
+  voterid varchar,
+  campaignid varchar,
+  valid varchar
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+  vcdata record;
+begin
+
+  if( valid = 'registered' ) then
+
+    delete from votesconflicts as vc where vc.id = conflictid;
+
+  elsif( valid = 'conflicted' ) then
+
+    select * into vcdata from votesconflicts as vc where vc.id = conflictid;
+
+    update voters as vt set 
+      passportimagehash = vcdata.passportimagehash,
+      fullname = vcdata.fullname,
+      email = vcdata.email,
+      localityid = vcdata.localityid,
+      districtid = vcdata.districtid,
+      sendemails = vcdata.sendemails
+    where vt.id = vcdata.voterid;
+
+    update votes as v set
+      data = vcdata.data,
+      sent = vcdata.sent
+    where v.voterid = voterid and v.campaignid = campaignid;
+
+    delete from votesconflicts as vc where vc.id = conflictid;
+
+  elsif( valid = 'none' ) then
+
+    delete from votesconflicts as vc where vc.id = conflictid;
+  
+  end if;
+
+end;
+$function$;
+
+
+create or replace function saveCheckerConflictResolve(
+  conflictid varchar,
+  checkerid varchar,
+  valid varchar
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+  ccdata record;
+begin
+
+  if( valid = 'registered' ) then
+
+    delete from checkersconflicts as cc where cc.id = conflictid;
+
+  elsif( valid = 'conflicted' ) then
+
+    select * into ccdata from checkersconflicts as cc where cc.id = conflictid;
+
+    update checkers as c set 
+      passportimagehash = ccdata.passportimagehash,
+      fullname = ccdata.fullname,
+      email = ccdata.email,
+      localityid = ccdata.localityid,
+      districtid = ccdata.districtid,
+      sendemails = ccdata.sendemails
+    where c.id = ccdata.checkerid;
+
+    delete from checkersconflicts as cc where cc.id = conflictid;
+
+  elsif( valid = 'none' ) then
+
+    delete from checkersconflicts as cc where cc.id = conflictid;
+  
+  end if;
+
+end;
+$function$;
+
+/* Не забыть убрать камменты!!! */
+create or replace function getVoiceForHelperCheck(
+  campaignid varchar,
+  helperid varchar,
+  out voterid varchar,
+  out fullname varchar,
+  out number bigint,
+  out data varchar,
+  out state varchar,
+  out checkerid varchar,
+  out othercheckers varchar,
+  out locality varchar,
+  out district varchar,
+  out districtuncheckedleft bigint
+)
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  select
+    v.voterid,
+    vt.fullname,
+    v.number,
+    v.data,
+    v.state,
+    v.checkerid,
+    v.othercheckers,
+    l.name,
+    d.name
+  into
+    voterid,
+    fullname,
+    number,
+    data,
+    state,
+    checkerid,
+    othercheckers,
+    locality,
+    district
+  from votes as v 
+  inner join voters as vt on vt.id = v.voterid /*and vt.id != helperid*/
+  inner join voters as h on h.id = helperid and vt.localityid = h.localityid and vt.districtid = h.districtid
+  inner join localities as l on vt.localityid = l.id
+  inner join districts as d on vt.districtid = d.id
+  where v.campaignid = campaignid and ( ( v.state = 'n' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) or ( v.state = '+' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) ) 
+  and not exists 
+    ( select * from inconsistencyreports as ir where v.voterid = ir.voterid and v.campaignid = ir.campaignid  )
+  limit 1;
+
+  if( voterid is not null ) then
+
+    select
+      count(*)
+    into
+      districtuncheckedleft
+    from votes as v 
+    inner join voters as vt on vt.id = v.voterid 
+    inner join voters as h on h.id = helperid and vt.localityid = h.localityid and vt.districtid = h.districtid
+    inner join localities as l on vt.localityid = l.id
+    inner join districts as d on vt.districtid = d.id
+    where v.campaignid = campaignid and ( ( v.state = 'n' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) or ( v.state = '+' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) );  
+
+  end if;
+
+  /* пробуем взять из нас.пункта 'Другое' */
+  if( voterid is null ) then
+
+    select
+      v.voterid,
+      vt.fullname,
+      v.number,
+      v.data,
+      v.state,
+      v.checkerid,
+      v.othercheckers,
+      l.name,
+      d.name
+    into
+      voterid,
+      fullname,
+      number,
+      data,
+      state,
+      checkerid,
+      othercheckers,
+      locality,
+      district
+    from votes as v 
+    inner join voters as vt on vt.id = v.voterid /*and vt.id != helperid*/
+    inner join voters as h on h.id = helperid and ( vt.localityid = 'xxxx' or vt.districtid = 'xxxx' )
+    inner join localities as l on vt.localityid = l.id
+    inner join districts as d on vt.districtid = d.id
+    where v.campaignid = campaignid and ( ( v.state = 'n' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) or ( v.state = '+' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) ) 
+    and not exists 
+      ( select * from inconsistencyreports as ir where v.voterid = ir.voterid and v.campaignid = ir.campaignid  )
+    limit 1;
+
+    if( voterid is not null ) then
+
+      select
+        count(*)
+      into
+        districtuncheckedleft
+      from votes as v 
+      inner join voters as vt on vt.id = v.voterid 
+      inner join voters as h on h.id = helperid and ( vt.localityid = h.localityid or vt.districtid = h.districtid )
+      inner join localities as l on vt.localityid = l.id
+      inner join districts as d on vt.districtid = d.id
+      where v.campaignid = campaignid and ( ( v.state = 'n' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) or ( v.state = '+' and coalesce( array_upper( v.othercheckers, 1 ), 0 ) = 0 ) );
+
+    end if;
+
+  end if;
+
+end;
+$function$;
+
+
+create or replace function saveVoiceCheckHelper(
+  voterid varchar,
+  campaignid varchar,
+  helperid varchar,
+  state varchar,
+  message varchar
+)
+ returns void
+ LANGUAGE plpgsql
+AS $function$
+#variable_conflict use_variable
+declare
+begin
+
+  if( state != '+' and state != 'error' ) then
+    raise exception 'Wrong state';
+  end if;
+
+  if( state = '+' ) then
+
+    update votes as v set othercheckers = array_append( othercheckers, helperid::text )  where v.campaignid = campaignid and v.voterid = voterid;
+
+  elsif( state = 'error' ) then
+
+    insert into inconsistencyreports( voterid, campaignid, senderid, type, message ) 
+    values( voterid, campaignid, helperid, 'v', message );
+
+  end if;
+
+end;
+$function$;

@@ -1,0 +1,113 @@
+/* Стурктура базы данных */
+
+create table voters (
+  id varchar(20) primary key,
+  passportimagehash varchar(100) not null,
+  fullname varchar(100),
+  email varchar(100),
+  localityid varchar(4) references localities(id),
+  districtid varchar(4) references districts(id),
+  sendemails boolean
+);
+
+create table checkers (
+  id varchar(20) primary key,
+  passportimagehash varchar(100) not null,
+  fullname varchar(100) not null,
+  email varchar(100) not null,
+  state varchar(1) not null,
+  localityid varchar(4) references localities(id),
+  districtid varchar(4) references districts(id),
+  sendemails boolean not null,
+  nchecked bigint not null,
+  message varchar
+);
+
+create table localities (
+  id varchar(4) primary key,
+  name varchar(100) not null
+);
+
+create table districts (
+  id varchar(4) primary key,
+  locality varchar(100) not null,
+  name varchar(100) not null
+);
+
+/*
+insert into campaigns( id, name, description, created, todate, type, state, data )
+values( 'ccc1', 'Тестовое голосование', 'Это тестовое голосование', current_timestamp, current_timestamp + interval '2 months', 'selectone', 'active',
+'{{Лукашенко,lknk,""},{Тихановская,thnk,""}}');
+*/
+
+# state: active, not_active, finished
+# type: select_one, check_several
+# data: display, code, value
+
+create table campaigns (
+  id varchar(20) primary key,
+  name varchar(200) not null,
+  description varchar(1000) not null,
+  created timestamp not null,
+  todate timestamp not null,
+  type varchar(20) not null,
+  state varchar(20) not null,
+  data text[][3] not null
+);
+
+#state: n, +, -
+
+create table votes (
+  voterid varchar(20) references voters(id),
+  campaignid varchar(20) references campaigns(id),
+  number bigint not null,
+  sent timestamp not null,
+  data varchar(4) not null,
+  checked boolean not null,
+  state varchar(1) not null,
+  checkerid varchar(20) references checkers(id),
+  othercheckers text[],
+  checkrequested timestamp,
+  message varchar(50)
+);
+
+# type: v - vote
+# state 
+
+create table inconsistencyreports (
+  voterid varchar(20) references voters(id),
+  campaignid varchar(20) references campaigns(id),
+  senderid varchar(20) references voters(id),
+  type varchar(1) not null,
+  message varchar(50),
+  checkrequested timestamp
+);
+
+create table votesconflicts (
+  id varchar(8) primary key,
+  voterid varchar(20) not null,
+  passportimagehash varchar(100) not null,
+  fullname varchar(100),
+  email varchar(100),
+  localityid varchar(4),
+  districtid varchar(4),
+  sendemails boolean,
+
+  campaignid varchar(20),
+  sent timestamp,
+  data varchar(4),
+  checkrequested timestamp
+);
+
+create table checkersconflicts (
+  id varchar(8) primary key,
+  checkerid varchar(20) not null,
+  passportimagehash varchar(100) not null,
+
+  fullname varchar(100),
+  email varchar(100),
+  localityid varchar(4),
+  districtid varchar(4),
+  sendemails boolean
+);
+
