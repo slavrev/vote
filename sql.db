@@ -3,6 +3,7 @@
 create table voters (
   id varchar(20) primary key,
   passportimagehash varchar(100) not null,
+  registeredsecs bigint not null,
   fullname varchar(100),
   email varchar(100),
   localityid varchar(4) references localities(id),
@@ -13,6 +14,7 @@ create table voters (
 create table checkers (
   id varchar(20) primary key,
   passportimagehash varchar(100) not null,
+  registeredsecs bigint not null,
   fullname varchar(100) not null,
   email varchar(100) not null,
   state varchar(1) not null,
@@ -41,7 +43,7 @@ values( 'ccc1', 'Тестовое голосование', 'Это тестов�
 */
 
 # state: active, not_active, finished
-# type: select_one, check_several
+# type: select_one, sheck_several
 # data: display, code, value
 
 create table campaigns (
@@ -87,6 +89,7 @@ create table votesconflicts (
   id varchar(8) primary key,
   voterid varchar(20) not null,
   passportimagehash varchar(100) not null,
+  registeredsecs bigint not null,
   fullname varchar(100),
   email varchar(100),
   localityid varchar(4),
@@ -103,7 +106,7 @@ create table checkersconflicts (
   id varchar(8) primary key,
   checkerid varchar(20) not null,
   passportimagehash varchar(100) not null,
-
+  registeredsecs bigint not null,
   fullname varchar(100),
   email varchar(100),
   localityid varchar(4),

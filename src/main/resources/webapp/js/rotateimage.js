@@ -20,6 +20,7 @@ var photoRotateDegree;
 var signatureRotateDegree;
 
 var passportImageSaved = false;
+var passportImageModifiedSecs = 0;
 
 
 function renderImage( file, id ) {
@@ -39,8 +40,11 @@ function renderImage( file, id ) {
       if( ( img.width == 900 && img.height < img.width ) || ( img.height == 900 && img.width < img.height ) ) { // не сжимаем
 
         console.log('Loaded with no resize: ', file);
+        console.log('Last modified: ', file.lastModified );
+        passportImageModifiedSecs = Math.floor( file.lastModified / 1000 );
 
         onOriginalResizedImageReady( fileUrl, file, id );
+        onRenderImageReady( fileUrl, file, id );
 
         if( id == 'passportfile' ) {
 
@@ -53,16 +57,19 @@ function renderImage( file, id ) {
       }
       else {
 
-        resizeImage( img, id, onOriginalResizedImageReady );
+        resizeImage( img, id, function( url, blob, id ) {
 
-        if( id == 'passportfile' ) {
+          onOriginalResizedImageReady( url, blob, id );
 
-          passportImageSaved = false;
+          if( id == 'passportfile' || id == 'signaturefile' ) {
 
-          var savepassportfile = document.querySelector('#savepassportfile');
-          if( savepassportfile )
-            savepassportfile.style.display = 'inline-block';
-        }
+            drawWaterMark( url, blob, id, onRenderImageReady );
+          }
+          else {
+
+            onRenderImageReady( url, blob, id );
+          }
+        });
       }
     };
   };
@@ -74,20 +81,12 @@ function onOriginalResizedImageReady( url, blob, id ) {
 
   if( id == 'passportfile' ) {
 
-    passportUrl = url;
-    passportBlob = blob;
-
-    hashPassportImage( blob );
-
     originalPassportUrl = url;
     originalPassportBlob = blob;
     passportRotateDegree = 0;
   }
 
   else if( id == 'photofile' ) {
-
-    photoUrl = url;
-    photoBlob = blob;
 
     originalPhotoUrl = url;
     originalPhotoBlob = blob;
@@ -96,15 +95,45 @@ function onOriginalResizedImageReady( url, blob, id ) {
 
   else if( id == 'signaturefile' ) {
 
-    signatureUrl = url;
-    signatureBlob = blob;
-
     originalSignatureUrl = url;
     originalSignatureBlob = blob;
     signatureRotateDegree = 0;
   }
+}
+
+function onRenderImageReady( url, blob, id ) {
+
+  if( id == 'passportfile' ) {
+
+    passportUrl = url;
+    passportBlob = blob;
+
+    hashPassportImage( blob );
+  }
+
+  else if( id == 'photofile' ) {
+
+    photoUrl = url;
+    photoBlob = blob;
+  }
+
+  else if( id == 'signaturefile' ) {
+
+    signatureUrl = url;
+    signatureBlob = blob;
+  }
 
   document.querySelector('#'+id).parentElement.querySelector('.preview').innerHTML = "<img src='" + url + "' />";
+
+
+  if( id == 'passportfile' ) {
+
+    passportImageSaved = false;
+
+    var savepassportfile = document.querySelector('#savepassportfile');
+    if( savepassportfile )
+      savepassportfile.style.display = 'inline-block';
+  }
 }
 
 function normalizeDegrees( degrees ) {
@@ -170,6 +199,73 @@ function resizeImage( img, id, ondone ) {
         ondone( url, blob, id );
 
   }, 'image/jpeg', 0.8);
+}
+
+
+function drawWaterMark( url, blob, id, ondone ) {
+
+  const img = new Image();
+  img.src = url;
+  img.onload = () => {
+
+    var elem = document.createElement('canvas');
+    var ctx;
+
+    elem.width = img.width;
+    elem.height = img.height;
+
+    ctx = elem.getContext('2d');
+
+    ctx.drawImage(img, 0, 0, elem.width, elem.height);
+
+    if( elem.width > img.height ) {
+
+      var text = 'только для голосования';
+      ctx.font = "70px Arial";
+      ctx.strokeStyle = "#ff0000b4";
+
+      var x = img.width / 2;
+
+      ctx.textAlign = "center";
+      ctx.strokeText( text, x, 100);
+      ctx.strokeText( text, x, 200);
+      ctx.strokeText( text, x, 300);
+      ctx.strokeText( text, x, 400);
+      ctx.strokeText( text, x, 500);
+      ctx.strokeText( text, x, 600);
+      ctx.strokeText( text, x, 700);
+      ctx.strokeText( text, x, 800);
+    }
+    else if( img.height > img.width ) {
+
+      var text = 'только для голосования';
+      ctx.font = "50px Arial";
+      ctx.strokeStyle = "#ff0000b4";
+
+      var x = img.width / 2;
+
+      ctx.textAlign = "center";
+      ctx.strokeText( text, x, 100);
+      ctx.strokeText( text, x, 200);
+      ctx.strokeText( text, x, 300);
+      ctx.strokeText( text, x, 400);
+      ctx.strokeText( text, x, 500);
+      ctx.strokeText( text, x, 600);
+      ctx.strokeText( text, x, 700);
+      ctx.strokeText( text, x, 800);
+    }
+
+    ctx.canvas.toBlob( (blob) => {
+
+        console.log('resized Blob obtained. size: ', blob.size );
+
+        var url = window.URL.createObjectURL(blob);
+
+        if( ondone )
+          ondone( url, blob, id );
+
+    }, 'image/jpeg', 0.8);
+  };
 }
 
 function rotateImage( evt ) {
@@ -275,6 +371,18 @@ function rotateImage( evt ) {
 
 function onImageRotated( url, blob, id ) {
 
+  if( id.includes('passport') || id.includes('signature') ) {
+
+    drawWaterMark( url, blob, id, onImageRotatedReady );
+  }
+  else {
+
+    onImageRotatedReady( url, blob, id );
+  }
+}
+
+function onImageRotatedReady( url, blob, id ) {
+
   if( id.includes('passport') ) {
     passportUrl = url;
     passportBlob = blob;
@@ -331,6 +439,8 @@ function savePassportFile() {
   document.body.removeChild( a );
 
   passportImageSaved = true;
+  passportImageModifiedSecs = Math.floor( new Date().getTime() / 1000 );
+
   document.querySelector('#savepassportfile').style.display = 'none';
 }
 

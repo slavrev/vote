@@ -25,8 +25,14 @@ public class EnterCheckerServlet extends HttpServlet
 
     String id = request.getParameter("id");
     String passportimagehash = request.getParameter("passportimagehash");
+    String sregisteredsecs = request.getParameter("registeredsecs");
 
-    if( id == null || passportimagehash == null ) {
+    Long registeredsecs = null;
+    try {
+      registeredsecs = Long.parseLong( sregisteredsecs );
+    } catch( Exception e ) {}
+
+    if( id == null || passportimagehash == null || registeredsecs == null ) {
 
       response.setContentType("text/html");
       response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -46,7 +52,7 @@ public class EnterCheckerServlet extends HttpServlet
 
       if( DbTools.isCheckerRegistered( dbConn, id ) ) {
 
-        if( DbTools.enterChecker( dbConn, id, passportimagehash ) ) {
+        if( DbTools.enterChecker( dbConn, id, passportimagehash, registeredsecs ) ) {
 
           request.getSession().setAttribute("checkerid", id );
 

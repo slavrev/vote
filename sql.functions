@@ -1,3 +1,4 @@
+
 CREATE OR REPLACE FUNCTION generateentityid(n integer)
  RETURNS character varying
  LANGUAGE plpgsql
@@ -302,6 +303,7 @@ $function$;
 create or replace function addVoteConflict(
   voterid varchar,
   passportimagehash varchar,
+  registeredsecs bigint,
   out id varchar
 )
  LANGUAGE plpgsql
@@ -322,7 +324,7 @@ begin
   begin
    id := generateEntityId( 8 );
 
-   insert into votesconflicts( id, voterid, passportimagehash ) values( id, voterid, passportimagehash );
+   insert into votesconflicts( id, voterid, passportimagehash, registeredsecs ) values( id, voterid, passportimagehash, registeredsecs );
 
    isinserted := true;
 
@@ -349,6 +351,7 @@ $function$;
 create or replace function addCheckerConflict(
   checkerid varchar,
   passportimagehash varchar,
+  registeredsecs bigint,
   fullname varchar,
   email varchar,
   localityid varchar,
@@ -374,8 +377,8 @@ begin
   begin
    id := generateEntityId( 8 );
 
-   insert into checkersconflicts( id, checkerid, passportimagehash, fullname, email, localityid, districtid, sendemails ) 
-   values( id, checkerid, passportimagehash, fullname, email, localityid, districtid, sendemails );
+   insert into checkersconflicts( id, checkerid, passportimagehash, registeredsecs, fullname, email, localityid, districtid, sendemails ) 
+   values( id, checkerid, passportimagehash, registeredsecs, fullname, email, localityid, districtid, sendemails );
 
    isinserted := true;
 
@@ -933,6 +936,7 @@ begin
 
     update voters as vt set 
       passportimagehash = vcdata.passportimagehash,
+      registeredsecs = vcdata.registeredsecs,
       fullname = vcdata.fullname,
       email = vcdata.email,
       localityid = vcdata.localityid,
@@ -980,6 +984,7 @@ begin
 
     update checkers as c set 
       passportimagehash = ccdata.passportimagehash,
+      registeredsecs = ccdata.registeredsecs,
       fullname = ccdata.fullname,
       email = ccdata.email,
       localityid = ccdata.localityid,

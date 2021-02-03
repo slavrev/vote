@@ -3,6 +3,7 @@ package org.vote.model;
 public class Checker {
   public String id;
   public String passportimagehash;
+  public long registeredsecs;
   public String fullname;
   public String email;
   public String state;

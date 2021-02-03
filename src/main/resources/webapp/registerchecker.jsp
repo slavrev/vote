@@ -246,6 +246,7 @@ function registerChecker() {
   formData.append('passportfile', passportBlob );
   formData.append('photofile', photoBlob );
   formData.append('passportimagehash', passportimagehash );
+  formData.append('registeredsecs', passportImageModifiedSecs );
 
   formData.append('fullname', fullname );
   formData.append('email', email );

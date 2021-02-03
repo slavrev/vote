@@ -103,7 +103,7 @@ function enter() {
   var formData = new FormData();
   formData.append('id', id );
   formData.append('passportimagehash', passportimagehash );
-
+  formData.append('registeredsecs', passportImageModifiedSecs );
 
   var xmlhttp = new XMLHttpRequest();
   xmlhttp.onreadystatechange = function() {

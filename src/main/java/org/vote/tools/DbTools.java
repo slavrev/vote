@@ -111,23 +111,16 @@ public class DbTools {
   }
 
 
-  public static boolean loginVoter(Connection dbConn, String idoremail, String passportimagehash ) throws Exception {
+  public static boolean loginVoter(Connection dbConn, String id, String passportimagehash, long registeredsecs ) throws Exception {
 
     int votersCount = 0;
 
-    String id = null;
-    String email = null;
-
-    String query = null;
-
-    if( idoremail.contains("@") )
-      query = "select 1 from voters where email = ? and passportimagehash = ? limit 1";
-    else
-      query = "select 1 from voters where id = ? and passportimagehash = ? limit 1";
+    String query = "select 1 from voters where id = ? and passportimagehash = ? and abs( registeredsecs - ? ) < 600 limit 1";
 
     PreparedStatement st = dbConn.prepareStatement( query );
-    st.setString(1, idoremail );
+    st.setString(1, id );
     st.setString(2, passportimagehash );
+    st.setLong(3, registeredsecs );
 
     ResultSet rs = st.executeQuery();
 
@@ -170,28 +163,21 @@ public class DbTools {
       return true;
   }
 
-  public static boolean enterChecker(Connection dbConn, String idoremail, String passportimagehash ) throws Exception {
+  public static boolean enterChecker(Connection dbConn, String id, String passportimagehash, long registeredsecs ) throws Exception {
 
     int checkersCount = 0;
 
-    String id = null;
-    String email = null;
-
-    String query = null;
-
-    if( idoremail.contains("@") )
-      query = "select count(*) from checkers where email = ? and passportimagehash = ?";
-    else
-      query = "select count(*) from checkers where id = ? and passportimagehash = ?";
+    String query = "select 1 from checkers where id = ? and passportimagehash = ? and abs( registeredsecs - ? ) < 60 limit 1";
 
     PreparedStatement st = dbConn.prepareStatement( query );
-    st.setString(1, idoremail );
+    st.setString(1, id );
     st.setString(2, passportimagehash );
+    st.setLong(3, registeredsecs );
 
     ResultSet rs = st.executeQuery();
 
     if( rs.next() ) {
-      checkersCount = rs.getInt("count");
+      checkersCount = 1;
     }
 
     rs.close();
@@ -230,12 +216,13 @@ public class DbTools {
 
   public static void registerVoter( Connection dbConn, Voter voter ) throws Exception {
 
-    String query = "insert into voters(id, passportimagehash) values(?, ?)";
+    String query = "insert into voters(id, passportimagehash, registeredsecs) values(?, ?, ?)";
 
     PreparedStatement st = dbConn.prepareStatement( query );
 
     st.setString(1, voter.id );
     st.setString(2, voter.passport_image_hash );
+    st.setLong(3, voter.registeredsecs );
 
     st.executeUpdate();
 
@@ -246,12 +233,13 @@ public class DbTools {
 
     String id = null;
 
-    String query = "select * from addVoteConflict( ?, ? )";
+    String query = "select * from addVoteConflict( ?, ?, ? )";
 
     PreparedStatement st = dbConn.prepareStatement( query );
 
     st.setString(1, voter.id );
     st.setString(2, voter.passport_image_hash );
+    st.setLong(3, voter.registeredsecs );
 
     ResultSet rs = st.executeQuery();
 
@@ -270,17 +258,19 @@ public class DbTools {
 
     String id = null;
 
-    String query = "select * from addCheckerConflict( ?, ?, ?, ?, ?, ?, ? )";
+    String query = "select * from addCheckerConflict( ?, ?, ?, ?, ?, ?, ?, ? )";
 
     PreparedStatement st = dbConn.prepareStatement( query );
 
     st.setString(1, checker.id );
     st.setString(2, checker.passportimagehash);
-    st.setString(3, checker.fullname );
-    st.setString(4, checker.email );
-    st.setString(5, checker.localityid);
-    st.setString(6, checker.districtid);
-    st.setBoolean(7, checker.sendemails );
+    st.setLong(3, checker.registeredsecs);
+
+    st.setString(4, checker.fullname );
+    st.setString(5, checker.email );
+    st.setString(6, checker.localityid);
+    st.setString(7, checker.districtid);
+    st.setBoolean(8, checker.sendemails );
 
     ResultSet rs = st.executeQuery();
 
@@ -297,19 +287,20 @@ public class DbTools {
 
   public static void registerChecker( Connection dbConn, Checker checker ) throws Exception {
 
-    String query = "insert into checkers(id, passportimagehash, fullname, email, state, localityid, districtid, sendemails, nchecked ) values(?, ?, ?, ?, ?, ?, ?, ?, 0)";
+    String query = "insert into checkers(id, passportimagehash, registeredsecs, fullname, email, state, localityid, districtid, sendemails, nchecked ) values(?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
 
     PreparedStatement st = dbConn.prepareStatement( query );
 
     st.setString(1, checker.id );
     st.setString(2, checker.passportimagehash);
+    st.setLong(3, checker.registeredsecs);
 
-    st.setString(3, checker.fullname );
-    st.setString(4, checker.email );
-    st.setString(5, checker.state );
-    st.setString(6, checker.localityid);
-    st.setString(7, checker.districtid);
-    st.setBoolean(8, checker.sendemails );
+    st.setString(4, checker.fullname );
+    st.setString(5, checker.email );
+    st.setString(6, checker.state );
+    st.setString(7, checker.localityid);
+    st.setString(8, checker.districtid);
+    st.setBoolean(9, checker.sendemails );
     // st.setLong(9, checker.nchecked );
 
     st.executeUpdate();
@@ -319,21 +310,23 @@ public class DbTools {
 
   public static void updateChecker( Connection dbConn, Checker checker ) throws Exception {
 
-    String query = "update checkers set passportimagehash = ?, fullname = ?, email = ?, state = ?, localityid = ?, districtid = ?, sendemails = ?, nchecked = ?, message = ? where id = ?";
+    String query = "update checkers set passportimagehash = ?, registeredsecs = ?, fullname = ?, email = ?, state = ?, localityid = ?, districtid = ?, sendemails = ?, nchecked = ?, message = ? where id = ?";
 
     PreparedStatement st = dbConn.prepareStatement( query );
 
     st.setString(1, checker.passportimagehash);
-    st.setString(2, checker.fullname );
-    st.setString(3, checker.email );
-    st.setString(4, checker.state );
-    st.setString(5, checker.localityid);
-    st.setString(6, checker.districtid);
-    st.setBoolean(7, checker.sendemails );
-    st.setLong(8, checker.nchecked );
-    st.setString(9, checker.message );
+    st.setLong(2, checker.registeredsecs);
 
-    st.setString(10, checker.id );
+    st.setString(3, checker.fullname );
+    st.setString(4, checker.email );
+    st.setString(5, checker.state );
+    st.setString(6, checker.localityid);
+    st.setString(7, checker.districtid);
+    st.setBoolean(8, checker.sendemails );
+    st.setLong(9, checker.nchecked );
+    st.setString(10, checker.message );
+
+    st.setString(11, checker.id );
 
     st.executeUpdate();
 

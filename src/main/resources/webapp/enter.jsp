@@ -105,6 +105,7 @@ function enter() {
   formData.append('id', id );
   formData.append('passportfile', passportBlob );
   formData.append('passportimagehash', passportimagehash );
+  formData.append('registeredsecs', passportImageModifiedSecs );
 
   var path;
 

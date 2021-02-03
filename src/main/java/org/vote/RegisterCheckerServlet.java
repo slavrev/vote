@@ -41,8 +41,15 @@ public class RegisterCheckerServlet extends HttpServlet
     String localityid = request.getParameter("localityid");
     String districtid = request.getParameter("districtid");
     boolean sendemails = request.getParameter("sendemails").equals("true");
+    String sregisteredsecs = request.getParameter("registeredsecs");
 
-    if( id == null || passportimagehash == null || fullname == null || email == null || localityid == null || districtid == null ) {
+    Long registeredsecs = null;
+    try {
+      registeredsecs = Long.parseLong( sregisteredsecs );
+    } catch( Exception e ) {}
+
+
+    if( id == null || passportimagehash == null || fullname == null || email == null || localityid == null || districtid == null || registeredsecs == null ) {
 
       response.setContentType("application/json");
       response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -70,6 +77,7 @@ public class RegisterCheckerServlet extends HttpServlet
       Checker checker = new Checker();
       checker.id = id;
       checker.passportimagehash = passportimagehash;
+      checker.registeredsecs = registeredsecs;
       checker.fullname = fullname;
       checker.email = email;
       checker.state = "n";

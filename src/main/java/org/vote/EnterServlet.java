@@ -34,8 +34,14 @@ public class EnterServlet extends HttpServlet
 
     String id = request.getParameter("id");
     String passportimagehash = request.getParameter("passportimagehash");
+    String sregisteredsecs = request.getParameter("registeredsecs");
 
-    if( id == null || passportimagehash == null ) {
+    Long registeredsecs = null;
+    try {
+      registeredsecs = Long.parseLong( sregisteredsecs );
+    } catch( Exception e ) {}
+
+    if( id == null || passportimagehash == null || registeredsecs == null ) {
 
       response.setContentType("text/html");
       response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -55,7 +61,7 @@ public class EnterServlet extends HttpServlet
 
         if( DbTools.isVoterRegistered( dbConn, id ) ) {
 
-          boolean logined = DbTools.loginVoter( dbConn, id, passportimagehash );
+          boolean logined = DbTools.loginVoter( dbConn, id, passportimagehash, registeredsecs );
 
           if( logined ) {
 
@@ -78,6 +84,7 @@ public class EnterServlet extends HttpServlet
           Voter voter = new Voter();
           voter.id = id;
           voter.passport_image_hash = passportimagehash;
+          voter.registeredsecs = registeredsecs;
 
           DbTools.registerVoter(dbConn, voter);
 
@@ -105,6 +112,7 @@ public class EnterServlet extends HttpServlet
         Voter voter = new Voter();
         voter.id = id;
         voter.passport_image_hash = passportimagehash;
+        voter.registeredsecs = registeredsecs;
 
         String conflictid = DbTools.addVoteConflict(dbConn, voter);
 
